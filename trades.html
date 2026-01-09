@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Daytrade Journal - Trades</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body data-page="trades">
+  <div class="container">
+    <nav class="nav">
+      <div class="nav-left">
+        <div class="brand">Daytrade Journal</div>
+      </div>
+      <div class="nav-right">
+        <a class="nav-link" href="./index.html">Dashboard</a>
+        <a class="nav-link" href="./new.html">新規トレード登録</a>
+        <a class="nav-link active" id="navTrades" href="./trades.html">トレード一覧</a>
+      </div>
+    </nav>
+
+    <header class="page-header">
+      <div>
+        <h1>トレード一覧（カレンダー）</h1>
+        <div class="subtitle">日付を押すと、その日のトレードが表示されます</div>
+      </div>
+      <div class="top-actions">
+        <button class="btn" id="btnToday">今日</button>
+      </div>
+    </header>
+
+    <div class="split">
+      <section class="card">
+        <div class="hd">
+          <h2>Calendar</h2>
+          <div class="cal-head">
+            <button class="btn" id="btnPrev">◀</button>
+            <div class="mono cal-title" id="calTitle">YYYY-MM</div>
+            <button class="btn" id="btnNext">▶</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="hint">●はその日にトレードがある印です（損益で色が変わります）</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="hd">
+          <h2 id="dayTitle">Day Detail</h2>
+          <div class="badge"><span class="dot" id="dayDot"></span><span id="daySum">¥0</span></div>
+        </div>
+        <div class="bd">
+          <div class="day-box">
+            <div class="day-actions">
+              <button class="btn" id="btnNewForDay">この日に新規登録</button>
+            </div>
+            <div class="day-list" id="dayList"></div>
+            <div class="empty" id="dayEmpty">この日のトレードはありません。</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- detail dialog -->
+    <dialog id="detailDialog">
+      <div class="modal">
+        <div class="mh">
+          <div>
+            <div class="modal-title" id="dTitle">Trade</div>
+            <div class="modal-sub mono" id="dSub"></div>
+          </div>
+          <div class="mh-right">
+            <button class="btn" id="btnEdit">編集</button>
+            <button class="btn btn-danger" id="btnDelete">削除</button>
+            <button class="btn" id="btnCloseDialog">閉じる</button>
+          </div>
+        </div>
+
+        <div class="modal-grid">
+          <div class="modal-card">
+            <div class="modal-k">損益</div>
+            <div class="modal-v mono" id="dPnl">¥0</div>
+            <div class="modal-s" id="dCalc"></div>
+          </div>
+          <div class="modal-card">
+            <div class="modal-k">反省</div>
+            <div class="modal-text" id="dReview">-</div>
+            <div class="modal-tags" id="dTags"></div>
+
+            <div class="shot-preview" id="dShotWrap" style="display:none">
+              <div class="modal-k" style="margin-top:10px">スクショ</div>
+              <img id="dShotImg" alt="trade screenshot" />
+            </div>
+          </div>
+        </div>
+
+        <div class="hint">
+          ※ スクショは保存されます（画像が大きすぎると保存に失敗することがあります）。
+        </div>
+      </div>
+    </dialog>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Daytrade Journal - Dashboard</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body data-page="dashboard">
+  <div class="container">
+    <nav class="nav">
+      <div class="nav-left">
+        <div class="brand">Daytrade Journal</div>
+      </div>
+      <div class="nav-right">
+        <a class="nav-link active" href="./index.html">Dashboard</a>
+        <a class="nav-link" href="./new.html">新規トレード登録</a>
+        <a class="nav-link" href="./trades.html">トレード一覧</a>
+      </div>
+    </nav>
+
+    <header class="page-header">
+      <div>
+        <h1>Dashboard</h1>
+        <div class="subtitle">今日 / 今月 / 今年の損益と、累計推移を確認</div>
+      </div>
+      <div class="top-actions">
+        <button class="btn btn-danger" id="btnClearAll">全データ削除</button>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="hd">
+        <h2>Overview</h2>
+        <div class="badge"><span class="dot" id="dotHealth"></span><span id="healthText">Ready</span></div>
+      </div>
+      <div class="bd">
+        <div class="dash">
+          <div class="metric">
+            <div class="k">今日の損益（合計）</div>
+            <div class="v mono" id="pnlToday">¥0</div>
+            <div class="s" id="cntToday">0 trades</div>
+          </div>
+          <div class="metric">
+            <div class="k">今月の損益（合計）</div>
+            <div class="v mono" id="pnlMonth">¥0</div>
+            <div class="s" id="cntMonth">0 trades</div>
+          </div>
+          <div class="metric">
+            <div class="k">今年の損益（合計）</div>
+            <div class="v mono" id="pnlYear">¥0</div>
+            <div class="s" id="cntYear">0 trades</div>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title">損益推移（累計）</div>
+              <div class="chart-sub">全トレードを日付順で累計</div>
+            </div>
+            <div class="chart-mini">
+              <span class="mono" id="pnlTotal">¥0</span>
+              <span class="muted">（累計）</span>
+            </div>
+          </div>
+          <canvas id="equityCanvas"></canvas>
+        </div>
+
+        <div class="hint">
+          ※ データはこのブラウザの <span class="mono">localStorage</span> に保存。<br>
+          ※ スクショは圧縮してトレードに保存されます（ブラウザの容量制限あり）。
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

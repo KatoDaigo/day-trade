@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Daytrade Journal - New Trade</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body data-page="new">
+  <div class="container">
+    <nav class="nav">
+      <div class="nav-left">
+        <div class="brand">Daytrade Journal</div>
+      </div>
+      <div class="nav-right">
+        <a class="nav-link" href="./index.html">Dashboard</a>
+        <a class="nav-link active" href="./new.html">新規トレード登録</a>
+        <a class="nav-link" href="./trades.html">トレード一覧</a>
+      </div>
+    </nav>
+
+    <header class="page-header">
+      <div>
+        <h1>新規トレード登録</h1>
+        <div class="subtitle">ロング / ショート対応。反省を残して改善に繋げる</div>
+      </div>
+      <div class="top-actions">
+        <button class="btn btn-primary" id="btnSave">保存</button>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="hd">
+        <h2>Trade Form</h2>
+        <div class="badge"><span class="dot" id="dotSave"></span><span id="saveText">Ready</span></div>
+      </div>
+      <div class="bd">
+        <form id="tradeForm">
+          <div class="form">
+            <label>
+              日付
+              <input type="date" id="fDate" required />
+            </label>
+
+            <label>
+              サイド（売買）
+              <select id="fSide" required>
+                <option value="long">買い</option>
+                <option value="short">空売り</option>
+              </select>
+            </label>
+
+            <label>
+              銘柄（任意）
+              <input type="text" id="fSymbol" placeholder="例：7203 / AAPL" />
+            </label>
+
+            <label>
+              手数料（任意）
+              <input type="number" id="fFee" step="0.01" min="0" placeholder="0" />
+            </label>
+
+            <label>
+              建てた値段（エントリー）
+              <input type="number" id="fEntry" step="0.01" min="0" required />
+            </label>
+
+            <label>
+              返済した値段（決済）
+              <input type="number" id="fExit" step="0.01" min="0" required />
+            </label>
+
+            <label>
+              株数
+              <input type="number" id="fQty" step="1" min="1" required />
+            </label>
+
+            <label class="full">
+              反省（何を考えて建てた？何がダメだった？）
+              <textarea id="fReview" placeholder="例：根拠 / ルール / 感情 / 反省 / 次の改善"></textarea>
+            </label>
+
+            <label class="full">
+              タグ（任意・カンマ区切り）
+              <input type="text" id="fTags" placeholder="例：ブレイク, 逆張り, 寄り付き" />
+            </label>
+          </div>
+
+          <div class="pnl-preview">
+            <div class="left">
+              <div class="k">損益プレビュー</div>
+              <div class="v mono" id="pnlPreview">¥0</div>
+            </div>
+            <div class="right" id="pnlExplain">-</div>
+          </div>
+
+          <!-- Screenshot paste (saved) -->
+          <div class="shot card-lite">
+            <div class="shot-h">
+              <div>
+                <div class="shot-title">スクショ貼り付け（保存します）</div>
+                <div class="shot-sub">貼ったスクショはトレードに紐づけて保存され、一覧の詳細で後から見返せます。</div>
+              </div>
+              <button type="button" class="btn" id="btnClearShot">消す</button>
+            </div>
+
+            <div class="shot-body">
+              <div class="paste-area" id="pasteArea" tabindex="0">
+                <div class="paste-text">
+                  ここをクリックして、<span class="mono">Ctrl + V</span> でスクショを貼り付け
+                </div>
+                <img id="shotImg" alt="screenshot preview" hidden />
+              </div>
+            </div>
+          </div>
+
+          <div class="hint">
+            ※ スクショは圧縮して保存します（ブラウザの容量制限があるため）。<br>
+            ※ 保存するとダッシュボード・カレンダーに反映されます。
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
