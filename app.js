@@ -1,67 +1,104 @@
 /**
- * Daytrade Journal
- * - 3 pages: dashboard / new / trades(calendar)
- * - Trades stored in localStorage
+ * Daytrade Journal (Simplified)
+ * - 3 pages:
+ *   - dashboard (index.html): overview + equity curve
+ *   - daily input (new.html): per-day total PnL + screenshot + CSV upload/update
+ *   - calendar (trades.html): calendar + day detail
  *
- * Trade model:
+ * Data model (per day):
  * {
  *   id,
- *   date(YYYY-MM-DD),
- *   side('long'|'short'),
- *   symbol,
- *   entry,
- *   exit,
- *   qty,
- *   fee,
- *   review,
- *   tags[],
- *   shotDataUrl? (base64 data URL / resized & compressed),
+ *   date: "YYYY-MM-DD",
+ *   pnl: number,               // total PnL for the day (JPY)
+ *   memo?: string,
+ *   shotDataUrl?: string,      // legacy single screenshot (data URL)
+ *   shotDataUrls?: string[],   // new multi screenshots (data URL)
  *   createdAt,
  *   updatedAt
  * }
+ *
+ * CSV base (optional):
+ * {
+ *   name: string,
+ *   text: string,
+ *   updatedAt: number
+ * }
  */
-console.log("APPJS LOADED v3", new Date().toISOString());
+console.log("APPJS LOADED v5-zoom-modal", new Date().toISOString());
 
+const STORAGE_DAYS_KEY = "dtj_days_v1";
+const STORAGE_CSV_KEY  = "dtj_csv_base_v1";
+// legacy trades (will migrate once if days is empty)
+const LEGACY_TRADES_KEY = "dtj_trades_v3";
 
-const STORAGE_KEY = "dtj_trades_v3";
 const $ = (sel) => document.querySelector(sel);
 
 const state = {
-  trades: loadTrades(),
+  days: loadDays(),
   calendar: {
     year: new Date().getFullYear(),
     month: new Date().getMonth(), // 0-11
     selectedDate: toISODate(new Date()),
   },
-  dialogTradeId: null,
+  dialogDate: null,
 };
 
 boot();
 
 function boot(){
-  const page = document.body.dataset.page;
+  // NOTE: 初回起動時に旧データを自動取り込みしない（常に新規入力スタート）
+  // if(state.days.length === 0) migrateFromLegacyTrades();
 
+  // common: image zoom dialog init
+  initImageZoomDialog();
+
+  const page = document.body.dataset.page;
   if(page === "dashboard") initDashboard();
-  if(page === "new") initNew();
-  if(page === "trades") initTrades();
+  if(page === "new") initDaily();
+  if(page === "trades") initCalendar();
 
   // common: clear all (only exists on dashboard)
   const clearBtn = $("#btnClearAll");
   if(clearBtn){
     clearBtn.addEventListener("click", () => {
-      if(!confirm("全データを削除します。よろしいですか？")) return;
-      state.trades = [];
-      saveTrades(state.trades);
-      // refresh current page view
+      if(!confirm("全データ（損益・スクショ・CSV情報）を削除します。よろしいですか？")) return;
+      localStorage.removeItem(STORAGE_DAYS_KEY);
+      localStorage.removeItem(STORAGE_CSV_KEY);
+      // 旧バージョンのデータも消して完全に空にする
+      localStorage.removeItem(LEGACY_TRADES_KEY);
+      state.days = [];
       location.reload();
     });
   }
 }
 
+/* ---------------- common: image zoom ---------------- */
+function initImageZoomDialog(){
+  const dialog = document.getElementById("imgZoomDialog");
+  if(!dialog) return;
+
+  // backdropクリックで閉じる（中身クリックは閉じない）
+  if(!dialog.dataset.bound){
+    dialog.addEventListener("click", (e) => {
+      if(e.target === dialog) dialog.close();
+    });
+    dialog.dataset.bound = "1";
+  }
+}
+
+function openImageZoom(url){
+  const dialog = document.getElementById("imgZoomDialog");
+  const img = document.getElementById("imgZoomTarget");
+  if(!dialog || !img) return;
+
+  img.src = url;
+  dialog.showModal();
+}
+
 /* ---------------- storage ---------------- */
-function loadTrades(){
+function loadDays(){
   try{
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_DAYS_KEY);
     if(!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -69,8 +106,23 @@ function loadTrades(){
     return [];
   }
 }
-function saveTrades(list){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+function saveDays(list){
+  localStorage.setItem(STORAGE_DAYS_KEY, JSON.stringify(list));
+}
+function loadCsvBase(){
+  try{
+    const raw = localStorage.getItem(STORAGE_CSV_KEY);
+    if(!raw) return null;
+    const parsed = JSON.parse(raw);
+    if(!parsed || typeof parsed !== "object") return null;
+    if(typeof parsed.text !== "string") return null;
+    return parsed;
+  }catch{
+    return null;
+  }
+}
+function saveCsvBase(obj){
+  localStorage.setItem(STORAGE_CSV_KEY, JSON.stringify(obj));
 }
 
 /* ---------------- helpers ---------------- */
@@ -92,24 +144,6 @@ function yen(n){
   const abs = Math.abs(n);
   return `${sign}¥${abs.toLocaleString("ja-JP", {maximumFractionDigits:0})}`;
 }
-function parseTags(s){
-  return (s || "")
-    .split(",")
-    .map(t=>t.trim())
-    .filter(Boolean)
-    .slice(0, 30);
-}
-function calcPnl(t){
-  const entry = num(t.entry), exit = num(t.exit), qty = num(t.qty), fee = num(t.fee);
-  const gross = (t.side === "short") ? (entry - exit) * qty : (exit - entry) * qty;
-  return gross - fee;
-}
-function fmtNum(n){
-  const x = Number(n);
-  if(!Number.isFinite(x)) return "0";
-  if(Number.isInteger(x)) return x.toLocaleString("ja-JP");
-  return x.toLocaleString("ja-JP", {maximumFractionDigits:2});
-}
 function shorten(s, n){
   if(!s) return "";
   return s.length > n ? s.slice(0, n) + "…" : s;
@@ -120,7 +154,6 @@ function cryptoId(){
 }
 
 // Convert pasted image to a smaller dataURL (JPEG) so it can be saved in localStorage.
-// NOTE: localStorage has a small quota (often ~5MB). Keeping images small is important.
 async function imageFileToDataUrl(file, opts={}){
   const maxW = opts.maxW ?? 1100;
   const maxH = opts.maxH ?? 1100;
@@ -154,20 +187,119 @@ async function imageFileToDataUrl(file, opts={}){
   const ctx = canvas.getContext("2d");
   ctx.drawImage(img, 0, 0, w, h);
 
-  // Use JPEG for better compression (charts / screenshots are usually fine at 0.82).
   return canvas.toDataURL("image/jpeg", quality);
 }
 
 function approxBytesFromDataUrl(dataUrl){
-  // Rough estimate: base64 bytes = len * 3/4 (minus header)
   if(!dataUrl) return 0;
   const idx = dataUrl.indexOf(",");
   const b64 = idx >= 0 ? dataUrl.slice(idx+1) : dataUrl;
   return Math.floor(b64.length * 0.75);
 }
 
+function normalizeShots(rec){
+  // backward compatible:
+  // - new: shotDataUrls: string[]
+  // - old: shotDataUrl: string
+  const arr = Array.isArray(rec?.shotDataUrls) ? rec.shotDataUrls.filter(Boolean) : [];
+  if(arr.length) return arr;
+  if(rec?.shotDataUrl && typeof rec.shotDataUrl === "string") return [rec.shotDataUrl];
+  return [];
+}
+
+function renderShotGrid(container, shots, opts={}){
+  if(!container) return;
+  const editable = !!opts.editable;
+  const onRemove = typeof opts.onRemove === "function" ? opts.onRemove : null;
+
+  container.innerHTML = "";
+  const list = Array.isArray(shots) ? shots : [];
+  if(list.length === 0) return;
+
+  list.forEach((url, idx) => {
+    const wrap = document.createElement("div");
+    wrap.className = "shot-thumb";
+
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = `screenshot ${idx+1}`;
+    img.title = "クリックで拡大";
+    img.addEventListener("click", () => {
+      // same tab, fluffy zoom
+      openImageZoom(url);
+    });
+    wrap.appendChild(img);
+
+    if(editable){
+      const x = document.createElement("button");
+      x.type = "button";
+      x.className = "shot-x";
+      x.textContent = "×";
+      x.title = "削除";
+      x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onRemove && onRemove(idx);
+      });
+      wrap.appendChild(x);
+    }
+
+    container.appendChild(wrap);
+  });
+}
+
+function showToast(node, message){
+  if(!node) return;
+  node.textContent = message || "OK";
+  node.hidden = false;
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { node.hidden = true; }, 1600);
+}
+
 function startOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
 function startOfYear(d){ return new Date(d.getFullYear(), 0, 1); }
+
+/* ---------------- legacy migration ---------------- */
+function migrateFromLegacyTrades(){
+  try{
+    const raw = localStorage.getItem(LEGACY_TRADES_KEY);
+    if(!raw) return;
+    const trades = JSON.parse(raw);
+    if(!Array.isArray(trades) || trades.length === 0) return;
+
+    // build date -> pnl sum
+    const map = new Map();
+    for(const t of trades){
+      const date = t?.date;
+      if(!date || typeof date !== "string") continue;
+      // legacy calc
+      const side = t.side;
+      const entry = num(t.entry), exit = num(t.exit), qty = num(t.qty), fee = num(t.fee);
+      const gross = (side === "short") ? (entry - exit) * qty : (exit - entry) * qty;
+      const pnl = gross - fee;
+
+      map.set(date, (map.get(date) || 0) + pnl);
+    }
+
+    const days = [...map.entries()]
+      .sort((a,b)=> a[0].localeCompare(b[0]))
+      .map(([date, pnl]) => ({
+        id: cryptoId(),
+        date,
+        pnl: Math.round(pnl),
+        memo: "（旧データから自動変換）",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }));
+
+    if(days.length){
+      state.days = days;
+      saveDays(state.days);
+      console.log("Migrated legacy trades -> days:", days.length);
+    }
+  }catch(err){
+    console.warn("Legacy migration failed:", err);
+  }
+}
 
 /* ---------------- dashboard page ---------------- */
 function initDashboard(){
@@ -189,40 +321,40 @@ function initDashboard(){
   const m0 = startOfMonth(now);
   const y0 = startOfYear(now);
 
-  const today = state.trades.filter(t => t.date === todayStr);
-  const month = state.trades.filter(t => parseISODate(t.date) >= m0);
-  const year = state.trades.filter(t => parseISODate(t.date) >= y0);
+  const today = state.days.filter(d => d.date === todayStr);
+  const month = state.days.filter(d => parseISODate(d.date) >= m0);
+  const year = state.days.filter(d => parseISODate(d.date) >= y0);
 
-  const sum = (list) => list.reduce((acc,t)=> acc + calcPnl(t), 0);
+  const sum = (list) => list.reduce((acc,d)=> acc + num(d.pnl), 0);
 
   const sToday = sum(today);
   const sMonth = sum(month);
-  const sYear = sum(year);
+  const sYear  = sum(year);
 
   setMetric(el.pnlToday, sToday);
   setMetric(el.pnlMonth, sMonth);
-  setMetric(el.pnlYear, sYear);
+  setMetric(el.pnlYear,  sYear);
 
-  el.cntToday.textContent = `${today.length} trades`;
-  el.cntMonth.textContent = `${month.length} trades`;
-  el.cntYear.textContent = `${year.length} trades`;
+  el.cntToday.textContent = `${today.length} days`;
+  el.cntMonth.textContent = `${month.length} days`;
+  el.cntYear.textContent = `${year.length} days`;
 
   // status
   el.dotHealth.classList.remove("good","bad");
-  if(state.trades.length === 0){
+  if(state.days.length === 0){
     el.healthText.textContent = "No data";
   }else{
     el.dotHealth.classList.add(sToday < 0 ? "bad" : "good");
     el.healthText.textContent = sToday < 0 ? "Be calm" : "Good pace";
   }
 
-  // equity curve (all trades by date asc)
-  const sorted = [...state.trades].sort((a,b)=> a.date.localeCompare(b.date) || (a.createdAt - b.createdAt));
+  // equity curve by date asc
+  const sorted = [...state.days].sort((a,b)=> a.date.localeCompare(b.date));
   const points = [];
   let acc = 0;
-  for(const t of sorted){
-    acc += calcPnl(t);
-    points.push({date:t.date, value:acc});
+  for(const d of sorted){
+    acc += num(d.pnl);
+    points.push({date:d.date, value:acc});
   }
   const total = points.length ? points[points.length-1].value : 0;
   el.pnlTotal.textContent = yen(total);
@@ -303,197 +435,139 @@ function drawEquity(canvas, points){
   ctx.fill();
 }
 
-/* ---------------- new page ---------------- */
-function initNew(){
+/* ---------------- daily input page ---------------- */
+function initDaily(){
   const el = {
     btnSave: $("#btnSave"),
+    btnGoCal: $("#btnGoCal"),
     dotSave: $("#dotSave"),
     saveText: $("#saveText"),
 
     fDate: $("#fDate"),
-    fSide: $("#fSide"),
-    fSymbol: $("#fSymbol"),
-    fFee: $("#fFee"),
-    fEntry: $("#fEntry"),
-    fExit: $("#fExit"),
-    fQty: $("#fQty"),
-    fReview: $("#fReview"),
-    fTags: $("#fTags"),
+    fPnl: $("#fPnl"),
+    fMemo: $("#fMemo"),
 
-    pnlPreview: $("#pnlPreview"),
-    pnlExplain: $("#pnlExplain"),
-
-    // screenshot paste (not saved)
     pasteArea: $("#pasteArea"),
-    shotImg: $("#shotImg"),
+    shotGrid: $("#shotGrid"),
     btnClearShot: $("#btnClearShot"),
+
+    toast: $("#toast"),
+
+    csvFile: $("#csvFile"),
+    csvStatus: $("#csvStatus"),
+    btnSaveCsv: $("#btnSaveCsv"),
+    btnExportCsv: $("#btnExportCsv"),
   };
 
-  // edit mode ?edit=<id>
+  // set date from query or today
   const qp = new URLSearchParams(location.search);
-  const editId = qp.get("edit");
-  let isEdit = false;
-  let currentShotDataUrl = "";
-
-  el.fDate.value = toISODate(new Date());
-  el.fSide.value = "long";
-
-  // if came from calendar day link ?date=YYYY-MM-DD
   const qdate = qp.get("date");
-  if(qdate && /^\d{4}-\d{2}-\d{2}$/.test(qdate)){
-    el.fDate.value = qdate;
-  }
+  const defaultDate = (qdate && /^\d{4}-\d{2}-\d{2}$/.test(qdate)) ? qdate : toISODate(new Date());
+  el.fDate.value = defaultDate;
 
-  // Load existing trade when editing
-  if(editId){
-    const t = findById(editId);
-    if(t){
-      isEdit = true;
-      el.btnSave.textContent = "更新";
-      el.saveText.textContent = "Edit";
-      el.fDate.value = t.date;
-      el.fSide.value = t.side;
-      el.fSymbol.value = t.symbol || "";
-      el.fFee.value = String(t.fee ?? "");
-      el.fEntry.value = String(t.entry ?? "");
-      el.fExit.value = String(t.exit ?? "");
-      el.fQty.value = String(t.qty ?? "");
-      el.fReview.value = t.review || "";
-      el.fTags.value = (t.tags || []).join(", ");
+  let currentShots = [];
 
-      if(t.shotDataUrl){
-        currentShotDataUrl = t.shotDataUrl;
-        el.shotImg.src = currentShotDataUrl;
-        el.shotImg.hidden = false;
-        el.pasteArea.querySelector(".paste-text").style.display = "none";
-      }
+  // load existing day record by date
+  const existing = findDayByDate(defaultDate);
+  if(existing){
+    el.fPnl.value = String(existing.pnl ?? "");
+    el.fMemo.value = existing.memo || "";
+    currentShots = normalizeShots(existing);
+    if(currentShots.length){
+      el.pasteArea.querySelector(".paste-text").style.display = "none";
     }
+    el.saveText.textContent = "Edit";
+  }else{
+    el.saveText.textContent = "Ready";
   }
 
-  const refreshPreview = () => {
-    const t = {
-      side: el.fSide.value,
-      entry: num(el.fEntry.value),
-      exit: num(el.fExit.value),
-      qty: num(el.fQty.value),
-      fee: num(el.fFee.value),
-    };
-    const pnl = calcPnl(t);
-
-    el.pnlPreview.textContent = yen(pnl);
-    el.pnlPreview.classList.toggle("good", pnl > 0);
-    el.pnlPreview.classList.toggle("bad", pnl < 0);
-
-    el.pnlExplain.textContent =
-      (t.side === "short")
-        ? `（${t.entry} − ${t.exit}）× ${t.qty} − ${t.fee}  ※ショート`
-        : `（${t.exit} − ${t.entry}）× ${t.qty} − ${t.fee}  ※ロング`;
+  const removeShot = (idx) => {
+    currentShots.splice(idx, 1);
+    renderShotGrid(el.shotGrid, currentShots, { editable:true, onRemove: removeShot });
+    el.pasteArea.querySelector(".paste-text").style.display = currentShots.length ? "none" : "block";
   };
 
-  ["input","change"].forEach(evt=>{
-    el.fSide.addEventListener(evt, refreshPreview);
-    el.fEntry.addEventListener(evt, refreshPreview);
-    el.fExit.addEventListener(evt, refreshPreview);
-    el.fQty.addEventListener(evt, refreshPreview);
-    el.fFee.addEventListener(evt, refreshPreview);
-  });
-  refreshPreview();
+  renderShotGrid(el.shotGrid, currentShots, { editable:true, onRemove: removeShot });
 
-  // Save / Update
+  // CSV status
+  refreshCsvStatus();
+
+  el.btnGoCal?.addEventListener("click", () => {
+    const d = el.fDate.value || toISODate(new Date());
+    location.href = `./trades.html?date=${encodeURIComponent(d)}`;
+  });
+
+  // Save day record
   el.btnSave.addEventListener("click", () => {
     const date = el.fDate.value;
-    const side = el.fSide.value;
-    const entry = num(el.fEntry.value);
-    const exit = num(el.fExit.value);
-    const qty = num(el.fQty.value);
-
-    if(!date || !entry || !exit || !qty){
-      alert("日付・建てた値段・返済した値段・株数は必須です。");
+    const pnl = num(el.fPnl.value);
+    if(!date){
+      alert("日付は必須です。");
+      return;
+    }
+    if(!Number.isFinite(pnl)){
+      alert("合計損益（数値）を入力してください。");
       return;
     }
 
+    const memo = (el.fMemo.value || "").trim();
+
     const next = {
       date,
-      side,
-      symbol: (el.fSymbol.value || "").trim(),
-      entry,
-      exit,
-      qty,
-      fee: num(el.fFee.value),
-      review: (el.fReview.value || "").trim(),
-      tags: parseTags(el.fTags.value),
-      shotDataUrl: currentShotDataUrl || undefined,
+      pnl: Math.round(pnl),
+      memo,
+      shotDataUrls: currentShots.length ? currentShots : undefined,
       updatedAt: Date.now(),
     };
 
     try{
-      if(isEdit){
-        const idx = state.trades.findIndex(t => t.id === editId);
-        if(idx === -1) throw new Error("not found");
-        const prev = state.trades[idx];
-        state.trades[idx] = {
+      const idx = state.days.findIndex(d => d.date === date);
+      if(idx >= 0){
+        const prev = state.days[idx];
+        state.days[idx] = {
           ...prev,
           ...next,
-          // keep createdAt
           createdAt: prev.createdAt || Date.now(),
         };
+        // remove legacy single key if exists
+        delete state.days[idx].shotDataUrl;
       }else{
-        const trade = {
+        state.days.push({
           id: cryptoId(),
           createdAt: Date.now(),
           ...next,
-        };
-        state.trades.unshift(trade);
+        });
       }
 
-      // warn if image too big
-      if(currentShotDataUrl){
-        const bytes = approxBytesFromDataUrl(currentShotDataUrl);
-        if(bytes > 1200 * 1024){
-          console.warn("Screenshot is large:", bytes, "bytes");
+      // keep sorted for stable display
+      state.days.sort((a,b)=> a.date.localeCompare(b.date));
+      saveDays(state.days);
+
+      // warn if images too big
+      if(currentShots.length){
+        const bytes = currentShots.reduce((acc,u)=> acc + approxBytesFromDataUrl(u), 0);
+        if(bytes > 1400 * 1024){
+          console.warn("Screenshots total is large:", bytes, "bytes");
         }
       }
-
-      saveTrades(state.trades);
     }catch(err){
       console.error(err);
-      alert("保存に失敗しました。スクショが大きすぎると保存できないことがあります。\n→ 画像をもう一度貼り付けるか、サイズを小さくして試してください。");
+      alert("保存に失敗しました。スクショが大きすぎると保存できないことがあります。\n→ 画像を減らす/貼り直す/サイズを小さくして試してください。");
       return;
     }
 
+    // badge + toast
     el.dotSave.classList.remove("bad");
     el.dotSave.classList.add("good");
     el.saveText.textContent = "Saved";
+    showToast(el.toast, "保存されました");
     setTimeout(()=> {
       el.dotSave.classList.remove("good");
       el.saveText.textContent = "Ready";
     }, 900);
-
-    if(isEdit){
-      // back to trades page for quick review
-      location.href = `./trades.html?date=${date}`;
-      return;
-    }
-
-    // clear form except date (keep)
-    el.fSymbol.value = "";
-    el.fFee.value = "";
-    el.fEntry.value = "";
-    el.fExit.value = "";
-    el.fQty.value = "";
-    el.fReview.value = "";
-    el.fTags.value = "";
-    refreshPreview();
-
-    // clear screenshot preview
-    currentShotDataUrl = "";
-    clearShot(el);
-
-    // optional: move to calendar page
-    // location.href = `./trades.html?date=${date}`;
   });
 
-  // Screenshot paste (SAVED)
+  // Screenshot paste (multi, SAVED)
   el.pasteArea.addEventListener("paste", async (e) => {
     const item = [...(e.clipboardData?.items || [])].find(it => it.type.startsWith("image/"));
     if(!item) return;
@@ -501,29 +575,94 @@ function initNew(){
     const file = item.getAsFile();
     if(!file) return;
 
-    // convert to compressed dataURL and preview
-    const dataUrl = await imageFileToDataUrl(file, {maxW: 1100, maxH: 1100, quality: 0.82});
-    currentShotDataUrl = dataUrl;
-    el.shotImg.src = dataUrl;
-    el.shotImg.hidden = false;
-    el.pasteArea.querySelector(".paste-text").style.display = "none";
+    try{
+      const dataUrl = await imageFileToDataUrl(file, {maxW: 1300, maxH: 1300, quality: 0.82});
+      currentShots.push(dataUrl);
+      el.pasteArea.querySelector(".paste-text").style.display = "none";
+      renderShotGrid(el.shotGrid, currentShots, { editable:true, onRemove: removeShot });
+      showToast(el.toast, `スクショを追加しました（${currentShots.length}枚）`);
+    }catch(err){
+      console.error(err);
+      alert("スクショの取り込みに失敗しました。画像が大きすぎる可能性があります。");
+    }
   });
 
   el.btnClearShot.addEventListener("click", () => {
-    currentShotDataUrl = "";
-    clearShot(el);
+    if(!currentShots.length) return;
+    if(!confirm("スクショをすべて消しますか？")) return;
+    currentShots = [];
+    renderShotGrid(el.shotGrid, currentShots, { editable:true, onRemove:()=>{} });
+    const t = el.pasteArea.querySelector(".paste-text");
+    if(t) t.style.display = "block";
   });
+
+  // CSV: save uploaded base
+  el.btnSaveCsv.addEventListener("click", async () => {
+    const f = el.csvFile.files?.[0];
+    if(!f){
+      alert("CSVファイルを選択してください。");
+      return;
+    }
+    if(f.size > 2.5 * 1024 * 1024){
+      alert("CSVが大きすぎます（目安 2.5MB 以内）。必要なら列を減らす/期間を分けてください。");
+      return;
+    }
+    const text = await readFileAsText(f);
+    saveCsvBase({ name: f.name, text, updatedAt: Date.now() });
+    refreshCsvStatus();
+    showToast(el.toast, "CSVを保存しました");
+  });
+
+  // CSV: update for current date + pnl and download
+  el.btnExportCsv.addEventListener("click", async () => {
+    const date = el.fDate.value;
+    const pnl = num(el.fPnl.value);
+    if(!date){
+      alert("日付を入力してください。");
+      return;
+    }
+
+    let base = loadCsvBase();
+    // If no saved base, try current file input
+    if(!base){
+      const f = el.csvFile.files?.[0];
+      if(f){
+        if(f.size > 2.5 * 1024 * 1024){
+          alert("CSVが大きすぎます（目安 2.5MB 以内）。必要なら列を減らす/期間を分けてください。");
+          return;
+        }
+        const text = await readFileAsText(f);
+        base = { name: f.name, text, updatedAt: Date.now() };
+        saveCsvBase(base);
+      }
+    }
+
+    const baseText = base?.text || "";
+    const updatedText = updateCsvText(baseText, date, Math.round(pnl));
+    const fileName = makeUpdatedCsvName(base?.name || "pnl.csv");
+
+    downloadTextAsFile(updatedText, fileName, "text/csv;charset=utf-8");
+    showToast(el.toast, "CSVを更新してダウンロードしました");
+  });
+
+  function refreshCsvStatus(){
+    const base = loadCsvBase();
+    if(!el.csvStatus) return;
+    if(!base){
+      el.csvStatus.textContent = "（未アップロード）";
+      return;
+    }
+    const d = new Date(base.updatedAt || Date.now());
+    el.csvStatus.textContent = `保存済み: ${base.name}（${d.toLocaleString("ja-JP")}）`;
+  }
 }
 
-function clearShot(el){
-  el.shotImg.hidden = true;
-  el.shotImg.src = "";
-  const t = el.pasteArea.querySelector(".paste-text");
-  if(t) t.style.display = "block";
+function findDayByDate(date){
+  return state.days.find(d => d.date === date);
 }
 
-/* ---------------- trades(calendar) page ---------------- */
-function initTrades(){
+/* ---------------- calendar page ---------------- */
+function initCalendar(){
   const el = {
     calTitle: $("#calTitle"),
     calGrid: $("#calGrid"),
@@ -544,11 +683,11 @@ function initTrades(){
     dTitle: $("#dTitle"),
     dSub: $("#dSub"),
     dPnl: $("#dPnl"),
-    dCalc: $("#dCalc"),
+    dMemo: $("#dMemo"),
     dShotWrap: $("#dShotWrap"),
-    dShotImg: $("#dShotImg"),
-    dReview: $("#dReview"),
-    dTags: $("#dTags"),
+    dShotGrid: $("#dShotGrid"),
+    dCsvInfo: $("#dCsvInfo"),
+    btnDownloadCsv: $("#btnDownloadCsv"),
   };
 
   // query param date
@@ -578,56 +717,50 @@ function initTrades(){
     state.calendar.month = now.getMonth();
     state.calendar.selectedDate = toISODate(now);
     renderCalendar(el);
-    // URLも今日に同期
+
     const url = new URL(location.href);
     url.searchParams.set("date", state.calendar.selectedDate);
     history.replaceState(null, "", url.toString());
-
   });
 
   el.btnNewForDay.addEventListener("click", () => {
-    location.href = `./new.html?date=${state.calendar.selectedDate}`;
+    location.href = `./new.html?date=${encodeURIComponent(state.calendar.selectedDate)}`;
   });
 
   el.btnCloseDialog.addEventListener("click", () => el.dialog.close());
 
   el.btnEdit.addEventListener("click", () => {
-    const t = findById(state.dialogTradeId);
-    if(!t) return;
-    location.href = `./new.html?edit=${t.id}`;
+    if(!state.dialogDate) return;
+    location.href = `./new.html?date=${encodeURIComponent(state.dialogDate)}`;
   });
 
-  function syncTradesFromStorage(){
-  state.trades = loadTrades(); // localStorageの最新で上書き
-  }
-
-
   el.btnDelete.addEventListener("click", () => {
-    const id = state.dialogTradeId;
-    if(!id) return;
-    if(!confirm("このトレードを削除しますか？")) return;
+    const date = state.dialogDate;
+    if(!date) return;
+    if(!confirm(`${date} の記録を削除しますか？`)) return;
 
-    state.trades = state.trades.filter(t => t.id !== id);
-    saveTrades(state.trades);
+    state.days = state.days.filter(d => d.date !== date);
+    saveDays(state.days);
 
     el.dialog.close();
     renderCalendar(el);
   });
 
+  // CSV open (download the saved base)
+  el.btnDownloadCsv?.addEventListener("click", () => {
+    const base = loadCsvBase();
+    if(!base?.text){
+      alert("CSVが未アップロードです。日次入力ページでアップロードしてください。");
+      return;
+    }
+    downloadTextAsFile(base.text, base.name || "base.csv", "text/csv;charset=utf-8");
+  });
+
   renderCalendar(el);
 }
 
-// ✅ ナビの「トレード一覧」クリックでも、現在選択中の日付を維持
-const navTrades = document.querySelector("#navTrades");
-if(navTrades){
-  navTrades.addEventListener("click", (e) => {
-    e.preventDefault();
-    location.href = `./trades.html?date=${state.calendar.selectedDate}`;
-  });
-}
-
 function renderCalendar(el){
-  state.trades = loadTrades();
+  state.days = loadDays();
 
   const y = state.calendar.year;
   const m = state.calendar.month;
@@ -649,8 +782,8 @@ function renderCalendar(el){
     el.calGrid.appendChild(h);
   }
 
-  // map date -> summary pnl sign
-  const byDate = groupByDate(state.trades);
+  // map date -> day record
+  const byDate = new Map(state.days.map(d => [d.date, d]));
 
   // 6 weeks * 7 = 42 cells
   for(let i=0;i<42;i++){
@@ -668,37 +801,29 @@ function renderCalendar(el){
     day.textContent = String(d.getDate());
     cell.appendChild(day);
 
-    const has = byDate.has(iso);
-    if(has){
-      const pnl = byDate.get(iso).reduce((acc,t)=> acc + calcPnl(t), 0);
+    const rec = byDate.get(iso);
+    if(rec){
+      const pnl = num(rec.pnl);
       const dot = document.createElement("div");
       dot.className = "cal-dot " + (pnl>0 ? "good" : pnl<0 ? "bad" : "");
       cell.appendChild(dot);
     }
 
-    // selected style
     if(iso === state.calendar.selectedDate) cell.classList.add("selected");
 
-    // click
-        // click（月外もクリックOK：前月/次月へ移動して選択）
     cell.addEventListener("click", () => {
-      // mutedセル（別月）なら、その月へ移動
       if(!inMonth){
         state.calendar.year = d.getFullYear();
         state.calendar.month = d.getMonth();
       }
-
       state.calendar.selectedDate = iso;
 
-      // URL同期（リロードしても同じ日付）
       const url = new URL(location.href);
       url.searchParams.set("date", iso);
       history.replaceState(null, "", url.toString());
 
-      // カレンダー全再描画（確実性優先）
       renderCalendar(el);
     });
-
 
     el.calGrid.appendChild(cell);
   }
@@ -708,108 +833,87 @@ function renderCalendar(el){
 
 function renderDayDetail(el){
   const date = state.calendar.selectedDate;
-  const list = state.trades
-    .filter(t => t.date === date)
-    .sort((a,b)=> (b.createdAt||0) - (a.createdAt||0));
+  const rec = state.days.find(d => d.date === date);
 
   el.dayTitle.textContent = `Day Detail: ${date}`;
 
-  const sum = list.reduce((acc,t)=> acc + calcPnl(t), 0);
-  el.daySum.textContent = yen(sum);
+  const pnl = rec ? num(rec.pnl) : 0;
+  el.daySum.textContent = yen(pnl);
   el.dayDot.classList.remove("good","bad");
-  if(list.length === 0){
-    el.dayDot.classList.add("");
-  }else{
-    el.dayDot.classList.add(sum < 0 ? "bad" : "good");
+  if(rec){
+    el.dayDot.classList.add(pnl < 0 ? "bad" : "good");
   }
 
   el.dayList.innerHTML = "";
-  el.dayEmpty.style.display = (list.length === 0) ? "block" : "none";
+  el.dayEmpty.style.display = rec ? "none" : "block";
 
-  for(const t of list){
-    const pnl = calcPnl(t);
-    const sideLabel = t.side === "short" ? "空売り" : "買い";
+  if(!rec) return;
 
-    const item = document.createElement("div");
-    item.className = "trade-item";
-    item.dataset.id = t.id;
+  const item = document.createElement("div");
+  item.className = "trade-item";
+  item.dataset.date = rec.date;
 
-    item.innerHTML = `
-      <div class="trade-left">
-        <div class="trade-top">
-          <span class="pill mono">${escapeHtml(t.symbol || "NO_SYMBOL")}</span>
-          <span class="pill mono">${sideLabel}</span>
-          ${t.shotDataUrl ? `<span class="pill mono">📷</span>` : ``}
-          <span class="muted small mono">E:${fmtNum(t.entry)} → X:${fmtNum(t.exit)} / Q:${fmtNum(t.qty)} / Fee:${fmtNum(t.fee)}</span>
-        </div>
-        <div class="trade-note">${escapeHtml(t.review ? shorten(t.review, 70) : "（反省なし）")}</div>
+  item.innerHTML = `
+    <div class="trade-left">
+      <div class="trade-top">
+        <span class="pill mono">Daily</span>
+        ${normalizeShots(rec).length ? `<span class="pill mono">📷${normalizeShots(rec).length}</span>` : ``}
+        <span class="muted small mono">${escapeHtml(shorten(rec.memo || "（メモなし）", 60))}</span>
       </div>
-      <div class="trade-right">
-        <div class="trade-pnl mono ${pnl>0?"good":pnl<0?"bad":""}">${yen(pnl)}</div>
-        <div class="muted small">tap detail</div>
-      </div>
-    `;
+      <div class="trade-note">${escapeHtml(rec.memo ? shorten(rec.memo, 80) : "（メモなし）")}</div>
+    </div>
+    <div class="trade-right">
+      <div class="trade-pnl mono ${pnl>0?"good":pnl<0?"bad":""}">${yen(pnl)}</div>
+      <div class="muted small">tap detail</div>
+    </div>
+  `;
 
-    item.addEventListener("click", () => openDetail(el, t.id));
-    el.dayList.appendChild(item);
-  }
+  item.addEventListener("click", () => openDetail(el, rec.date));
+  el.dayList.appendChild(item);
 }
 
-function groupByDate(trades){
-  const map = new Map();
-  for(const t of trades){
-    if(!map.has(t.date)) map.set(t.date, []);
-    map.get(t.date).push(t);
-  }
-  return map;
-}
+function openDetail(el, date){
+  const rec = state.days.find(d => d.date === date);
+  if(!rec) return;
 
-function openDetail(el, id){
-  const t = findById(id);
-  if(!t) return;
+  state.dialogDate = date;
 
-  state.dialogTradeId = id;
+  const pnl = num(rec.pnl);
 
-  const pnl = calcPnl(t);
-  const sideLabel = t.side === "short" ? "空売り" : "買い";
-
-  el.dTitle.textContent = t.symbol ? t.symbol : "Trade";
-  el.dSub.textContent =
-    `${t.date} | ${sideLabel} | Entry ${fmtNum(t.entry)} → Exit ${fmtNum(t.exit)} | Qty ${fmtNum(t.qty)} | Fee ${fmtNum(t.fee)}`;
+  el.dTitle.textContent = "Daily";
+  el.dSub.textContent = `${rec.date}`;
 
   el.dPnl.textContent = yen(pnl);
   el.dPnl.style.color = pnl > 0 ? "var(--good)" : pnl < 0 ? "var(--bad)" : "rgba(231,236,255,.92)";
 
-  el.dCalc.textContent = (t.side === "short")
-    ? `（${fmtNum(t.entry)} − ${fmtNum(t.exit)}）× ${fmtNum(t.qty)} − ${fmtNum(t.fee)}`
-    : `（${fmtNum(t.exit)} − ${fmtNum(t.entry)}）× ${fmtNum(t.qty)} − ${fmtNum(t.fee)}`;
+  if(el.dMemo) el.dMemo.textContent = rec.memo ? rec.memo : "（メモなし）";
 
-  // screenshot
-  if(el.dShotWrap && el.dShotImg){
-    if(t.shotDataUrl){
-      el.dShotImg.src = t.shotDataUrl;
+  // screenshots
+  if(el.dShotWrap && el.dShotGrid){
+    const shots = normalizeShots(rec);
+    if(shots.length){
       el.dShotWrap.style.display = "block";
+      renderShotGrid(el.dShotGrid, shots, { editable:false });
     }else{
-      el.dShotImg.src = "";
+      el.dShotGrid.innerHTML = "";
       el.dShotWrap.style.display = "none";
     }
   }
 
-  el.dReview.textContent = t.review || "（反省なし）";
-
-  el.dTags.innerHTML = "";
-  (t.tags || []).forEach(tag=>{
-    const span = document.createElement("span");
-    span.className = "pill";
-    span.textContent = tag;
-    el.dTags.appendChild(span);
-  });
+  // csv info
+  const base = loadCsvBase();
+  if(el.dCsvInfo){
+    if(!base){
+      el.dCsvInfo.textContent = "（未アップロード）";
+      if(el.btnDownloadCsv) el.btnDownloadCsv.disabled = true;
+    }else{
+      const dt = new Date(base.updatedAt || Date.now()).toLocaleString("ja-JP");
+      el.dCsvInfo.textContent = `保存済み: ${base.name}（${dt}）`;
+      if(el.btnDownloadCsv) el.btnDownloadCsv.disabled = false;
+    }
+  }
 
   el.dialog.showModal();
-}
-
-function findById(id){
-  return state.trades.find(t => t.id === id);
 }
 
 function escapeHtml(s){
@@ -819,4 +923,70 @@ function escapeHtml(s){
     .replaceAll(">","&gt;")
     .replaceAll('"',"&quot;")
     .replaceAll("'","&#039;");
+}
+
+/* ---------------- CSV helpers ---------------- */
+function readFileAsText(file){
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ""));
+    r.onerror = reject;
+    r.readAsText(file);
+  });
+}
+
+function updateCsvText(baseText, date, pnl){
+  // If empty: create new
+  const trimmed = (baseText || "").trim();
+  if(!trimmed){
+    return `date,pnl\n${date},${pnl}\n`;
+  }
+
+  const lines = trimmed.split(/\r?\n/).filter(l => l.trim().length > 0);
+  if(lines.length === 0){
+    return `date,pnl\n${date},${pnl}\n`;
+  }
+
+  const first = lines[0].split(",");
+  const hasHeader = first.some(c => c.trim().toLowerCase() === "date") && first.some(c => c.trim().toLowerCase() === "pnl");
+  const header = hasHeader ? lines[0] : "date,pnl";
+  const rows = hasHeader ? lines.slice(1) : lines;
+
+  // Parse to map, keep only first 2 cols if extra (simple mode)
+  const map = new Map();
+  for(const row of rows){
+    const cols = row.split(",");
+    const d = (cols[0] || "").trim();
+    if(!d) continue;
+    const v = (cols[1] || "").trim();
+    map.set(d, v);
+  }
+
+  map.set(date, String(pnl));
+
+  const outRows = [...map.entries()]
+    .sort((a,b)=> a[0].localeCompare(b[0]))
+    .map(([d,v]) => `${d},${v}`);
+
+  return header + "\n" + outRows.join("\n") + "\n";
+}
+
+function makeUpdatedCsvName(name){
+  const safe = (name || "pnl.csv").trim() || "pnl.csv";
+  const m = safe.match(/^(.*?)(\.[^.]+)?$/);
+  const base = m ? m[1] : safe;
+  const ext = (m && m[2]) ? m[2] : ".csv";
+  return `${base}_updated${ext}`;
+}
+
+function downloadTextAsFile(text, filename, mime){
+  const blob = new Blob([text], {type: mime || "text/plain;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename || "download.txt";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 1200);
 }

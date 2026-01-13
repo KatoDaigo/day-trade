@@ -14,15 +14,15 @@
       </div>
       <div class="nav-right">
         <a class="nav-link" href="./index.html">Dashboard</a>
-        <a class="nav-link" href="./new.html">新規トレード登録</a>
-        <a class="nav-link active" id="navTrades" href="./trades.html">トレード一覧</a>
+        <a class="nav-link" href="./new.html">日次入力</a>
+        <a class="nav-link active" id="navTrades" href="./trades.html">カレンダー</a>
       </div>
     </nav>
 
     <header class="page-header">
       <div>
-        <h1>トレード一覧（カレンダー）</h1>
-        <div class="subtitle">日付を押すと、その日のトレードが表示されます</div>
+        <h1>カレンダー</h1>
+        <div class="subtitle">日付を押すと、その日の合計損益とスクショを確認できます</div>
       </div>
       <div class="top-actions">
         <button class="btn" id="btnToday">今日</button>
@@ -53,7 +53,7 @@
         <div class="bd">
           <div class="day-box">
             <div class="day-actions">
-              <button class="btn" id="btnNewForDay">この日に新規登録</button>
+              <button class="btn" id="btnNewForDay">この日に入力/編集</button>
             </div>
             <div class="day-list" id="dayList"></div>
             <div class="empty" id="dayEmpty">この日のトレードはありません。</div>
@@ -79,25 +79,38 @@
 
         <div class="modal-grid">
           <div class="modal-card">
-            <div class="modal-k">損益</div>
+            <div class="modal-k">合計損益</div>
             <div class="modal-v mono" id="dPnl">¥0</div>
-            <div class="modal-s" id="dCalc"></div>
-          </div>
-          <div class="modal-card">
-            <div class="modal-k">反省</div>
-            <div class="modal-text" id="dReview">-</div>
-            <div class="modal-tags" id="dTags"></div>
+
+            <div class="modal-k" style="margin-top:10px">反省 / メモ</div>
+            <div class="modal-text" id="dMemo">-</div>
 
             <div class="shot-preview" id="dShotWrap" style="display:none">
-              <div class="modal-k" style="margin-top:10px">スクショ</div>
-              <img id="dShotImg" alt="trade screenshot" />
+              <div class="modal-k" style="margin-top:10px">スクショ（クリックで拡大）</div>
+              <div class="shot-grid" id="dShotGrid" aria-label="screenshots"></div>
             </div>
+          </div>
+
+          <div class="modal-card csv-card">
+            <div class="modal-k">CSV</div>
+            <div class="modal-text" id="dCsvInfo">（未アップロード）</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+              <button class="btn" id="btnDownloadCsv" type="button" disabled>CSVを開く</button>
+            </div>
+            <div class="hint">※ CSVは「日次入力」ページでアップロード/更新します。</div>
           </div>
         </div>
 
         <div class="hint">
           ※ スクショは保存されます（画像が大きすぎると保存に失敗することがあります）。
         </div>
+      </div>
+    </dialog>
+
+    <!-- Image zoom dialog (same tab, fluffy zoom) -->
+    <dialog id="imgZoomDialog" class="img-zoom-dialog" aria-label="image zoom">
+      <div class="img-zoom-inner">
+        <img id="imgZoomTarget" alt="screenshot preview" />
       </div>
     </dialog>
   </div>

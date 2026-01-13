@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Daytrade Journal - New Trade</title>
+  <title>Daytrade Journal - Daily Input</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body data-page="new">
@@ -14,28 +14,29 @@
       </div>
       <div class="nav-right">
         <a class="nav-link" href="./index.html">Dashboard</a>
-        <a class="nav-link active" href="./new.html">新規トレード登録</a>
-        <a class="nav-link" href="./trades.html">トレード一覧</a>
+        <a class="nav-link active" href="./new.html">日次入力</a>
+        <a class="nav-link" href="./trades.html">カレンダー</a>
       </div>
     </nav>
 
     <header class="page-header">
       <div>
-        <h1>新規トレード登録</h1>
-        <div class="subtitle">ロング / ショート対応。反省を残して改善に繋げる</div>
+        <h1>日次入力</h1>
+        <div class="subtitle">その日の合計損益とスクショ、CSV更新をまとめて管理</div>
       </div>
       <div class="top-actions">
         <button class="btn btn-primary" id="btnSave">保存</button>
+        <button class="btn" id="btnGoCal">カレンダーへ</button>
       </div>
     </header>
 
     <section class="card">
       <div class="hd">
-        <h2>Trade Form</h2>
+        <h2>Daily</h2>
         <div class="badge"><span class="dot" id="dotSave"></span><span id="saveText">Ready</span></div>
       </div>
       <div class="bd">
-        <form id="tradeForm">
+        <form id="dayForm">
           <div class="form">
             <label>
               日付
@@ -43,63 +44,22 @@
             </label>
 
             <label>
-              サイド（売買）
-              <select id="fSide" required>
-                <option value="long">買い</option>
-                <option value="short">空売り</option>
-              </select>
-            </label>
-
-            <label>
-              銘柄（任意）
-              <input type="text" id="fSymbol" placeholder="例：7203 / AAPL" />
-            </label>
-
-            <label>
-              手数料（任意）
-              <input type="number" id="fFee" step="0.01" min="0" placeholder="0" />
-            </label>
-
-            <label>
-              建てた値段（エントリー）
-              <input type="number" id="fEntry" step="0.01" min="0" required />
-            </label>
-
-            <label>
-              返済した値段（決済）
-              <input type="number" id="fExit" step="0.01" min="0" required />
-            </label>
-
-            <label>
-              株数
-              <input type="number" id="fQty" step="1" min="1" required />
+              合計損益（円）
+              <input type="number" id="fPnl" step="1" required placeholder="例：2500（マイナスは -2500）" />
             </label>
 
             <label class="full">
-              反省（何を考えて建てた？何がダメだった？）
-              <textarea id="fReview" placeholder="例：根拠 / ルール / 感情 / 反省 / 次の改善"></textarea>
+              メモ（任意）
+              <textarea id="fMemo" placeholder="例：ルール遵守できた/感情が出た/明日気をつけること など"></textarea>
             </label>
-
-            <label class="full">
-              タグ（任意・カンマ区切り）
-              <input type="text" id="fTags" placeholder="例：ブレイク, 逆張り, 寄り付き" />
-            </label>
-          </div>
-
-          <div class="pnl-preview">
-            <div class="left">
-              <div class="k">損益プレビュー</div>
-              <div class="v mono" id="pnlPreview">¥0</div>
-            </div>
-            <div class="right" id="pnlExplain">-</div>
           </div>
 
           <!-- Screenshot paste (saved) -->
           <div class="shot card-lite">
             <div class="shot-h">
               <div>
-                <div class="shot-title">スクショ貼り付け（保存します）</div>
-                <div class="shot-sub">貼ったスクショはトレードに紐づけて保存され、一覧の詳細で後から見返せます。</div>
+                <div class="shot-title">グラフのスクショ貼り付け（保存します）</div>
+                <div class="shot-sub">ここをクリックして <span class="mono">Ctrl + V</span> で貼り付け。日付に紐づけて保存されます。</div>
               </div>
               <button type="button" class="btn" id="btnClearShot">消す</button>
             </div>
@@ -107,21 +67,57 @@
             <div class="shot-body">
               <div class="paste-area" id="pasteArea" tabindex="0">
                 <div class="paste-text">
-                  ここをクリックして、<span class="mono">Ctrl + V</span> でスクショを貼り付け
+                  ここをクリックして、<span class="mono">Ctrl + V</span> でスクショを貼り付け（複数OK）
                 </div>
-                <img id="shotImg" alt="screenshot preview" hidden />
+              </div>
+
+              <div class="shot-grid" id="shotGrid" aria-label="screenshots"></div>
+            </div>
+          </div>
+
+          <!-- CSV upload/update -->
+          <div class="card-lite">
+            <div class="shot-h">
+              <div>
+                <div class="shot-title">CSVファイル（アップロード / 更新）</div>
+                <div class="shot-sub">既存CSVをアップロードしておくと、日付と損益を反映したCSVをダウンロードできます。</div>
+              </div>
+            </div>
+
+            <div class="form">
+              <label class="full">
+                CSVをアップロード（任意）
+                <input type="file" id="csvFile" accept=".csv,text/csv" />
+              </label>
+
+              <div class="full">
+                <div class="hint" id="csvStatus">（未アップロード）</div>
+              </div>
+
+              <div class="full" style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button type="button" class="btn" id="btnSaveCsv">CSVを保存</button>
+                <button type="button" class="btn btn-primary" id="btnExportCsv">この日付でCSVを更新してダウンロード</button>
               </div>
             </div>
           </div>
 
           <div class="hint">
-            ※ スクショは圧縮して保存します（ブラウザの容量制限があるため）。<br>
-            ※ 保存するとダッシュボード・カレンダーに反映されます。
+            ※ データはこのブラウザの <span class="mono">localStorage</span> に保存されます。<br>
+            ※ 画像やCSVが大きすぎると保存に失敗することがあります。
           </div>
         </form>
       </div>
     </section>
   </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden>保存されました</div>
+
+  <!-- Image zoom dialog (same tab, fluffy zoom) -->
+  <dialog id="imgZoomDialog" class="img-zoom-dialog" aria-label="image zoom">
+    <div class="img-zoom-inner">
+      <img id="imgZoomTarget" alt="screenshot preview" />
+    </div>
+  </dialog>
 
   <script src="./app.js"></script>
 </body>

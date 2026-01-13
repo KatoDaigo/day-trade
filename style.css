@@ -207,6 +207,7 @@ input:focus,textarea:focus,select:focus{
   background:rgba(255,255,255,.08);
 }
 textarea{min-height:110px;resize:vertical}
+#fMemo{min-height:220px}
 
 /* ===== PnL Preview ===== */
 .pnl-preview{
@@ -239,7 +240,7 @@ textarea{min-height:110px;resize:vertical}
   border-radius:14px;
   background:rgba(0,0,0,.08);
   padding:12px;
-  min-height:180px;
+  min-height:220px;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -252,6 +253,46 @@ textarea{min-height:110px;resize:vertical}
 .paste-area:focus{
   border-color:rgba(122,162,255,.55);
   box-shadow:0 0 0 4px rgba(122,162,255,.12);
+}
+
+/* ===== Screenshot grid (multi) ===== */
+.shot-grid{
+  margin-top:12px;
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap:10px;
+}
+.shot-thumb{
+  position:relative;
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:14px;
+  background:rgba(0,0,0,.08);
+  overflow:hidden;
+}
+.shot-thumb img{
+  width:100%;
+  height:120px;
+  object-fit:cover;
+  display:block;
+  cursor:pointer;
+}
+.shot-thumb .shot-x{
+  position:absolute;
+  right:8px;
+  top:8px;
+  width:28px;
+  height:28px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.20);
+  background:rgba(0,0,0,.35);
+  color:rgba(238,242,255,.95);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+.shot-thumb .shot-x:hover{
+  background:rgba(0,0,0,.50);
 }
 
 /* ===== Layout split ===== */
@@ -364,7 +405,7 @@ textarea{min-height:110px;resize:vertical}
   display:none;
 }
 
-/* ===== dialog ===== */
+/* ===== dialog (detail) ===== */
 dialog{
   border:none;padding:0;border-radius:16px;
   /* 真っ黒をやめて少し明るく（でもダークのまま） */
@@ -387,7 +428,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .modal-title{font-size:14px;font-weight:800}
 .modal-sub{font-size:12px;color:rgba(195,203,230,.92);margin-top:4px}
 
-.modal-grid{display:grid;grid-template-columns: 260px 1fr;gap:12px;}
+.modal-grid{display:grid;grid-template-columns: 1fr 280px;gap:12px;}
 @media (max-width: 760px){.modal-grid{grid-template-columns:1fr}}
 
 .modal-card{
@@ -406,3 +447,52 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
   white-space:pre-wrap
 }
 .modal-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+
+/* File input */
+input[type="file"]{padding:10px;border:1px dashed rgba(255,255,255,.18);border-radius:12px;background:rgba(255,255,255,.04)}
+
+/* ===== Toast ===== */
+.toast{
+  position:fixed;
+  left:50%;
+  bottom:18px;
+  transform:translateX(-50%);
+  padding:10px 14px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.18);
+  background:rgba(22,28,46,.92);
+  box-shadow:var(--shadow);
+  font-size:13px;
+  z-index:9999;
+}
+
+/* ===== Image Zoom (スクショ拡大) ===== */
+.img-zoom-dialog{
+  border:none;
+  padding:0;
+  background:transparent;
+  width:auto;
+  max-width:none;
+  box-shadow:none;
+}
+.img-zoom-dialog::backdrop{
+  background: rgba(0,0,0,.65);
+}
+.img-zoom-dialog .img-zoom-inner{
+  padding:0;
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow: 0 30px 90px rgba(0,0,0,.65);
+  border:1px solid rgba(255,255,255,.16);
+  background: rgba(22,28,46,.92);
+  animation: zoomIn .18s ease-out;
+}
+.img-zoom-dialog img{
+  display:block;
+  max-width: 92vw;
+  max-height: 92vh;
+}
+@keyframes zoomIn{
+  from{ transform: scale(.92); opacity: 0; }
+  to  { transform: scale(1); opacity: 1; }
+}
